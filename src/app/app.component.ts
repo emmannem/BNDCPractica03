@@ -3,6 +3,7 @@ import { Persona } from './models/persona.model';
 import { PersonaService } from './services/persona.service';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { Table } from 'primeng/table';
+import { forkJoin } from 'rxjs';
 
 @Component({
   selector: 'app-root',
@@ -31,13 +32,19 @@ export class AppComponent implements OnInit {
   loadPersonas(): void {
     this.personaService.getPersonas().subscribe({
       next: (data: Persona[]) => (this.personas = data),
-      error: (err) => console.error(err),
+      error: (err) => {
+        console.error(err);
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: 'Error al cargar personas',
+        });
+      },
     });
   }
 
   openNew() {
     this.persona = {
-      id: '',
       nombre: '',
       direccion: '',
       telefono: '',
@@ -70,7 +77,14 @@ export class AppComponent implements OnInit {
               life: 3000,
             });
           },
-          error: (err) => console.error(err),
+          error: (err) => {
+            console.error(err);
+            this.messageService.add({
+              severity: 'error',
+              summary: 'Error',
+              detail: 'Error al eliminar persona',
+            });
+          },
         });
       },
     });
@@ -79,26 +93,34 @@ export class AppComponent implements OnInit {
   deleteSelectedPersonas() {
     this.confirmationService.confirm({
       message:
-        '¿Estás seguro de que deseas eliminar las personas seleccionados?',
+        '¿Estás seguro de que deseas eliminar las personas seleccionadas?',
       header: 'Confirmar',
       icon: 'pi pi-exclamation-triangle',
       accept: () => {
-        this.selectedPersona.forEach((persona) => {
-          this.personaService.deletePersona(persona.id!).subscribe({
-            next: () => {
-              this.personas = this.personas.filter(
-                (val) => val.id !== persona.id
-              );
-            },
-            error: (err) => console.error(err),
-          });
-        });
-        this.selectedPersona = [];
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Éxito',
-          detail: 'Personas Eliminadas',
-          life: 3000,
+        const deleteRequests = this.selectedPersona.map((persona) =>
+          this.personaService.deletePersona(persona.id!)
+        );
+        forkJoin(deleteRequests).subscribe({
+          next: () => {
+            this.personas = this.personas.filter(
+              (val) => !this.selectedPersona.includes(val)
+            );
+            this.selectedPersona = [];
+            this.messageService.add({
+              severity: 'success',
+              summary: 'Éxito',
+              detail: 'Personas Eliminadas',
+              life: 3000,
+            });
+          },
+          error: (err) => {
+            console.error(err);
+            this.messageService.add({
+              severity: 'error',
+              summary: 'Error',
+              detail: 'Error al eliminar personas',
+            });
+          },
         });
       },
     });
@@ -110,20 +132,12 @@ export class AppComponent implements OnInit {
   }
 
   findIndexById(id: string): number {
-    let index = -1;
-    for (let i = 0; i < this.personas.length; i++) {
-      if (this.personas[i].id === id) {
-        index = i;
-        break;
-      }
-    }
-
-    return index;
+    return this.personas.findIndex((persona) => persona.id === id);
   }
 
   savePersona() {
     this.submitted = true;
-
+    console.log('Persona a guardar:', this.persona);
     if (this.persona.nombre?.trim()) {
       if (this.persona.id) {
         // Actualizar persona existente
@@ -131,10 +145,15 @@ export class AppComponent implements OnInit {
           .updatePersona(this.persona.id, this.persona)
           .subscribe({
             next: (data) => {
+              console.log('Persona actualizada:', data);
               const index = this.findIndexById(this.persona.id!);
               if (index !== -1) {
                 this.personas[index] = data;
               }
+              console.log(
+                'Lista de personas después de actualizar:',
+                this.personas
+              );
               this.messageService.add({
                 severity: 'success',
                 summary: 'Éxito',
@@ -144,13 +163,22 @@ export class AppComponent implements OnInit {
               this.personaDialog = false;
               this.persona = {} as Persona;
             },
-            error: (err) => console.error(err),
+            error: (err) => {
+              console.error(err);
+              this.messageService.add({
+                severity: 'error',
+                summary: 'Error',
+                detail: 'Error al actualizar persona',
+              });
+            },
           });
       } else {
-        // Crear nuevo persona
+        // Crear nueva persona
         this.personaService.savePersona(this.persona).subscribe({
           next: (data) => {
+            console.log('Persona creada:', data);
             this.personas.push(data);
+            console.log('Lista de personas después de crear:', this.personas);
             this.messageService.add({
               severity: 'success',
               summary: 'Éxito',
@@ -160,7 +188,14 @@ export class AppComponent implements OnInit {
             this.personaDialog = false;
             this.persona = {} as Persona;
           },
-          error: (err) => console.error(err),
+          error: (err) => {
+            console.error(err);
+            this.messageService.add({
+              severity: 'error',
+              summary: 'Error',
+              detail: 'Error al crear persona',
+            });
+          },
         });
       }
     }
